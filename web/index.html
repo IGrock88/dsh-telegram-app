@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>DSH · Панель</title>
+    <link rel="stylesheet" href="app.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <button id="back" class="ghost" hidden>‹</button>
+      <div class="title" id="bar-title">DSH</div>
+      <button id="refresh" class="ghost" title="Обновить">⟳</button>
+    </header>
+
+    <main>
+      <!-- Экран 1: вход по контрольному токену -->
+      <section id="screen-auth" class="screen">
+        <h1>Вход в Harness</h1>
+        <p class="muted">
+          Telegram подтвердил, что панель открыта из этого бота. Введи контрольный токен,
+          который задан на стороне Harness, — и этот чат будет привязан.
+        </p>
+        <label class="field">
+          <span>Контрольный токен</span>
+          <input id="control-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="••••••••" />
+        </label>
+        <button id="auth-submit" class="primary">Войти</button>
+        <p id="auth-error" class="error" hidden></p>
+        <details class="muted small">
+          <summary>Что именно проверяется</summary>
+          <p>
+            Панель присылает подписанный Telegram <code>initData</code>. Сервер проверяет подпись
+            ключом бота (<code>HMAC_SHA256(bot_token, "WebAppData")</code>) и свежесть
+            <code>auth_date</code>, затем сверяет контрольный токен. Только после этого chat id
+            сохраняется на диск — посторонний не увидит ни одного сообщения агента.
+          </p>
+        </details>
+      </section>
+
+      <!-- Экран 2: список чатов -->
+      <section id="screen-list" class="screen" hidden>
+        <div class="row">
+          <h1>Чаты</h1>
+          <button id="new-chat" class="ghost">＋ новый</button>
+        </div>
+        <p id="list-meta" class="muted small"></p>
+        <ul id="chat-list" class="list"></ul>
+        <p id="list-error" class="error" hidden></p>
+      </section>
+
+      <!-- Экран 3: диалог -->
+      <section id="screen-chat" class="screen" hidden>
+        <p id="chat-meta" class="muted small"></p>
+        <div id="log" class="log"></div>
+        <form id="composer" class="composer">
+          <textarea id="prompt" rows="1" placeholder="Написать агенту…"></textarea>
+          <button id="send" class="primary" type="submit">→</button>
+        </form>
+        <div class="row end">
+          <button id="stop" class="ghost danger">■ остановить ход</button>
+        </div>
+        <p id="chat-error" class="error" hidden></p>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

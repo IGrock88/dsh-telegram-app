@@ -1,0 +1,75 @@
+{
+  "name": "dsh-telegram-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telegram bridge for DeepSeek Harness: control-token pairing in the chat, menu → workspaces → chats navigation, prompts by plain text, approvals by buttons and idle notifications.",
+  "license": "MIT",
+  "author": "IGrock88",
+  "homepage": "https://github.com/IGrock88/dsh-telegram-app#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IGrock88/dsh-telegram-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IGrock88/dsh-telegram-app/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "telegram",
+    "telegram-bot",
+    "cordis",
+    "remote-control",
+    "notifications"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "web",
+    "cordis.patch.yml",
+    "README.md",
+    "README.ru.md",
+    "SPEC-layer1.md"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "probe": "node tools/probe-apply.mjs"
+  }
+}

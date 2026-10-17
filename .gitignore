@@ -1,0 +1,28 @@
+# Dependencies.
+#
+# These are installed inside the package so that `import '@deepseek-ai/schemastery'`
+# resolves from the real package path, which is where `dsh plugin add link:<path>`
+# hands control. Recreate with `pnpm install --prod`.
+node_modules/
+
+# Editor and OS noise.
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Startup logs written by the restart script.
+*.log
+
+# Local working notes.
+#
+# HANDOFF.md is the debugging journal kept while building this plugin against a live
+# Harness: it names the author's machine, absolute paths and chat ids. Useful locally,
+# out of place in a public repository.
+HANDOFF.md
+
+# Scratch copy of the previous Russian README, kept only while rewriting docs.
+.ru-readme-source.md
+# Scratch files used while preparing a commit.
+.commit-msg.txt

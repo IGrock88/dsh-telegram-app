@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Telegram bridge",
+    "description": "Control Harness from a Telegram chat: pair a chat with a control token, walk menu → workspaces → chats, send tasks as plain text, answer approvals with buttons, and get a message when a long turn finishes. No public address, tunnel or open port required."
+  }
+}

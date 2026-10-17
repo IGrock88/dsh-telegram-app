@@ -1,0 +1,14 @@
+# Normalise line endings in the repository.
+#
+# Without this, a Windows checkout commits CRLF into files that other platforms read as
+# data — and a script that arrived with CRLF fails on a Unix shell with a confusing
+# "bad interpreter" error. Text is stored with LF; Windows scripts keep CRLF because
+# cmd.exe is unhappy without it.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets stay untouched.
+*.png binary
+*.jpg binary
+*.ico binary

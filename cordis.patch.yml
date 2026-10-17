@@ -1,0 +1,11 @@
+# Bundle layer of dsh-telegram-app.
+#
+# This layer only inserts the plugin row. Left empty on purpose: secrets and
+# deployment values belong to the PROFILE layer (`~/.dsh/profiles/<profile>/cordis.patch.yml`),
+# which is applied after every bundle layer, or to DSH_TG_* environment variables.
+#
+# A later patch replaces the whole `config` object of the row (never a deep merge),
+# so when overriding, restate every field you need.
+- insert:
+    - id: telegram-app
+      name: dsh-telegram-app
