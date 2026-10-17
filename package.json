@@ -1,6 +1,6 @@
 {
   "name": "dsh-telegram-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Telegram bridge for DeepSeek Harness: control-token pairing in the chat, menu → workspaces → chats navigation, prompts by plain text, approvals by buttons and idle notifications.",
   "license": "MIT",

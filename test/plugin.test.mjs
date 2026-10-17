@@ -237,6 +237,54 @@ test('a stored digest with no readable plaintext is not treated as armed', async
   assert.equal(store.matchesControlToken('a-token-whose-plaintext-is-gone'), false)
 })
 
+test('the configured locale survives normalization and reaches the startup log', async () => {
+  // `normalizeConfig` is not exported, so this walks the real path instead: `apply()` with the
+  // raw config a profile would carry, and the log line it emits. Asserting on the resolver
+  // alone would not prove the field is wired from the schema through to the plugin.
+  const cases = [
+    [{ locale: 'en' }, 'en', 'a plain language code'],
+    [{ locale: 'EN-GB' }, 'en', 'a full tag'],
+    [{ locale: 'klingon' }, 'ru', 'an unrecognised value falls back'],
+    [{}, 'ru', 'an absent value falls back'],
+  ]
+  for (const [raw, expected, why] of cases) {
+    const settings = { describe: () => [{ ns: 'include:telegram-app' }], mutate: async () => {} }
+    const ctx = contextWithWebServer({ settings })
+    await apply(ctx, { botToken: 'token', statePath: statePath(), ...raw })
+    await ctx.activate()
+
+    const line = ctx.logger.entries.info.find(([message]) => message === 'telegram-app starting')
+    assert.notEqual(line, undefined, 'startup logs what it is about to do')
+    assert.equal(line[1].locale, expected, why)
+  }
+})
+
+test('an environment variable overrides the config, including a schema default', async () => {
+  // The loader hands `apply()` a config that already went through the schema, so every field
+  // with a default arrives holding it. If the config won, `DSH_TG_LOCALE` and friends would be
+  // silently dead — the setting would look applied while the bot kept the old language.
+  const previous = process.env.DSH_TG_LOCALE
+  process.env.DSH_TG_LOCALE = 'en'
+  try {
+    const cases = [
+      [{ locale: 'ru' }, 'en', 'the environment beats an explicit config value'],
+      [{}, 'en', 'the environment beats the schema default'],
+    ]
+    for (const [raw, expected, why] of cases) {
+      const settings = { describe: () => [{ ns: 'include:telegram-app' }], mutate: async () => {} }
+      const ctx = contextWithWebServer({ settings })
+      await apply(ctx, { botToken: 'token', statePath: statePath(), ...raw })
+      await ctx.activate()
+
+      const line = ctx.logger.entries.info.find(([message]) => message === 'telegram-app starting')
+      assert.equal(line[1].locale, expected, why)
+    }
+  } finally {
+    if (previous === undefined) delete process.env.DSH_TG_LOCALE
+    else process.env.DSH_TG_LOCALE = previous
+  }
+})
+
 test('a digest is never written for a token that could not be published', async () => {
   // Ordering matters: writing the digest first would leave an armed token nobody
   // can present, which is unrecoverable because only the hash is persisted.

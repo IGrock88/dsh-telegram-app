@@ -46,6 +46,8 @@ becomes a remote control for it:
   notifications arrive — applied on tap and survived across restarts.
 - **A settings form in the Harness Web UI** (Plugins → card → Configure), so deployment
   values do not have to be edited in YAML by hand.
+- **Russian and English chat copy**, switched by one setting. Command *names* are never
+  translated, so muscle memory and scripts keep working across a language change.
 - **Graceful degradation.** No Session controller, no Workspace registry, no Web server —
   the plugin still mounts and says what is missing instead of failing.
 - **Optional Mini App panel** (layer 2), served by the Harness Web server at `/tg-app`.
@@ -102,6 +104,7 @@ token is present.
 | --- | --- | --- | --- |
 | `botToken` | string, secret | `''` | Token from @BotFather. A blank field in the form leaves the stored value untouched. |
 | `controlToken` | string, secret | `''` | The secret you send the bot once, in the chat, to authorise it. Generated on first run when empty. |
+| `locale` | string | `ru` | The language the bot speaks in the chat: `ru` or `en`. See [Language](#language). |
 | `publicBaseUrl` | string | `''` | Public HTTPS origin for the Mini App. Empty keeps layer 2 off entirely. |
 | `appPath` | string | `/tg-app` | Path the Mini App owns on the Harness Web server. Read once, at mount. |
 | `apiBase` | string | `https://api.telegram.org` | Bot API origin, replaceable by a local reverse proxy. |
@@ -144,8 +147,13 @@ not pretend otherwise.
 
 ### Environment variables
 
-Useful for a deployment that keeps secrets out of YAML. The config value wins when both are
-set.
+Useful for a deployment that keeps secrets out of YAML.
+
+**The environment wins when both are set.** That is the opposite of the usual rule, and it is
+deliberate: the Harness resolves a plugin's config through its schema before the plugin starts,
+so a field that declares a default always arrives holding it. If the config won, every variable
+below whose field has a non-empty default (`locale`, `appPath`, `apiBase`) would be silently
+dead — the setting would look applied while the bot kept the old value.
 
 | Variable | Field |
 | --- | --- |
@@ -157,8 +165,38 @@ set.
 | `DSH_TG_PROXY` | `proxy` |
 | `DSH_TG_CWD` | `cwd` |
 | `DSH_TG_STATE_PATH` | `statePath` |
+| `DSH_TG_LOCALE` | `locale` |
 | `DSH_TG_SETTINGS_NS` | settings namespace override |
 | `DSH_TG_ALLOWED_USERS` | comma-separated ids for `allowedUserIds` |
+
+### Language
+
+The bot speaks Russian (`ru`) or English (`en`). Set `locale` in the settings form, in
+`cordis.patch.yml`, or through `DSH_TG_LOCALE`; the default is `ru`. The value is normalised,
+so `EN`, `en-GB` and `en_GB` all mean English, and anything unrecognised falls back to
+Russian rather than leaving the bot mute.
+
+The setting applies to **the whole deployment**, not per chat: one bot, one language. It takes
+effect on the next start, which is also when the bot re-publishes its command hints to
+Telegram.
+
+What changes and what does not:
+
+| | |
+| --- | --- |
+| Translated | Screens, buttons, command *descriptions*, notifications, approval cards, error messages, time units (`5 мин` → `5 min`). |
+| Not translated | Command *names* — `/menu` stays `/menu`. Data: Session titles, folder names, file paths, and the agent's own answers. |
+
+Counted phrases follow each language's own grammar rather than a shared rule: Russian needs
+three plural forms (`1 сессия`, `2 сессии`, `5 сессий`) where English needs two (`1 session`,
+`2 sessions`), so the agreement lives with the words instead of in one helper.
+
+A missing translation falls back to Russian and then to the key itself, so a gap in a
+dictionary shows up as the wrong language on one line rather than as an empty message.
+
+> **Layer 2 is Russian-only.** The optional Mini App panel (`web/`) has its own interface,
+> which so far exists in Russian only. Layer 1 — the entire chat experience — is fully
+> bilingual.
 
 ### Profile patch
 
@@ -369,7 +407,7 @@ registry or a Web server still mounts — it just reports what is unavailable.
 npm test            # node --test test/*.test.mjs
 ```
 
-190 tests, all offline: no network, no live Telegram, no running Harness. They cover the
+213 tests, all offline: no network, no live Telegram, no running Harness. They cover the
 transport payloads, the screens' exact wording and buttons, the callback parser, Session
 filtering, `state.json` migration and atomic writes, the client half rendered against a fake
 plugin loader, and the plugin mounting against a fake host.

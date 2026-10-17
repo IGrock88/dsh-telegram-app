@@ -20,7 +20,8 @@ import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { TelegramBot } from './lib/bot.mjs'
-import { COMMANDS, createRouter } from './lib/chat.mjs'
+import { commandsFor, createRouter } from './lib/chat.mjs'
+import { createTranslator, resolveLocale } from './lib/i18n.mjs'
 import { shortId } from './lib/format.mjs'
 import { registerRoutes } from './lib/routes.mjs'
 import { buildConfigSchema } from './lib/schema.mjs'
@@ -62,6 +63,7 @@ const ENV = {
   proxy: 'DSH_TG_PROXY',
   cwd: 'DSH_TG_CWD',
   statePath: 'DSH_TG_STATE_PATH',
+  locale: 'DSH_TG_LOCALE',
   settingsNamespace: 'DSH_TG_SETTINGS_NS',
 }
 
@@ -94,13 +96,30 @@ function plainValue(value) {
   return value
 }
 
-/** Read one string setting from the row config, then the environment. */
+/**
+ * Read one string setting, with the environment taking precedence over the config.
+ *
+ * The precedence is the reverse of the obvious one, and deliberately so. The loader resolves a
+ * plugin's config through its schema before `apply()` runs:
+ *
+ *     function resolveConfig(runtime, config) {
+ *       const result = runtime.Config['~standard'].validate(config)
+ *       return result.value            // defaults filled in
+ *     }
+ *
+ * So a field that declares a default arrives **already holding it**, and "the config wins when
+ * both are set" collapses into "the environment variable is dead" for every field whose default
+ * is not the empty string — which is exactly the three where an operator most wants an override
+ * (`locale`, `appPath`, `apiBase`). An escape hatch that silently does nothing is worse than no
+ * escape hatch, so the environment wins, and the README states that plainly.
+ */
 function stringSetting(raw, key) {
-  const fromConfig = plainValue(raw?.[key])
-  if (typeof fromConfig === 'string' && fromConfig.trim().length > 0) return fromConfig.trim()
   const envName = ENV[key]
   const fromEnv = envName ? process.env[envName] : undefined
-  return typeof fromEnv === 'string' && fromEnv.trim().length > 0 ? fromEnv.trim() : ''
+  if (typeof fromEnv === 'string' && fromEnv.trim().length > 0) return fromEnv.trim()
+  const fromConfig = plainValue(raw?.[key])
+  if (typeof fromConfig === 'string' && fromConfig.trim().length > 0) return fromConfig.trim()
+  return ''
 }
 
 /** Read a boolean setting with an explicit default. */
@@ -153,6 +172,9 @@ function normalizeConfig(raw = {}) {
     proxy: stringSetting(raw, 'proxy'),
     cwd: stringSetting(raw, 'cwd'),
     statePath: stringSetting(raw, 'statePath') || path.join(home, 'telegram-app', 'state.json'),
+    // Normalised here, so every consumer sees a supported value: `en-GB`, `EN` and a typo
+    // all resolve to something the dictionaries actually have.
+    locale: resolveLocale(stringSetting(raw, 'locale')),
     settingsNamespace: stringSetting(raw, 'settingsNamespace'),
     allowedUserIds: Array.isArray(allowedUsers) && allowedUsers.length > 0
       ? allowedUsers.map(Number)
@@ -359,6 +381,13 @@ export async function apply(ctx, rawConfig = {}) {
 
   const router = createRouter({ config, state, bot, sessions, registry, logger })
 
+  /**
+   * The chat language, for the strings this file owns: the approval cards and the bot's own
+   * command hints. Everything else is rendered by the router, which builds its own translator
+   * from the same config — one setting, one language, both halves.
+   */
+  const t = createTranslator(config.locale)
+
   /** Turn start times, for the idle notification's duration (§8). */
   const runStartedAt = new Map()
   /** Session each Mini App client last looked at, so the panel and the chat agree. */
@@ -391,6 +420,10 @@ export async function apply(ctx, rawConfig = {}) {
     controlToken: state.hasControlToken() ? 'ready' : 'MISSING',
     pairedChats: state.chats().length,
     publicBaseUrl: shouldServeApp(config) ? config.publicBaseUrl : 'MISSING (layer 2 stays off)',
+    // Reported so the operator can confirm what the bot will actually speak: an unrecognised
+    // value resolves to the default silently, which would otherwise look like the setting had
+    // been ignored.
+    locale: config.locale,
     statePath: config.statePath,
     sessions: ctx.get('sessionController') ? 'available' : 'MISSING (lists degrade)',
     workspaces: registry.available() ? 'available' : 'MISSING (no folders)',
@@ -443,7 +476,7 @@ export async function apply(ctx, rawConfig = {}) {
   ctx.on('agent/error', (payload) => {
     const sessionId = String(payload?.agent?.id ?? payload?.sessionId ?? '')
     if (!sessionId) return
-    const reason = String(payload?.error?.message ?? payload?.reason ?? payload?.error ?? 'ошибка')
+    const reason = String(payload?.error?.message ?? payload?.reason ?? payload?.error ?? t('approval.error'))
     void router.notifyError(sessionId, reason).catch((error) => {
       logger.warn('error notification failed', { sessionId: shortId(sessionId), error: String(error?.message ?? error) })
     })
@@ -458,8 +491,8 @@ export async function apply(ctx, rawConfig = {}) {
       const { view } = await router.collect(state.chats()[0])
       const session = view.sessions.find((entry) => entry.sessionId === String(req?.agent?.id ?? ''))
       const title = session ? sessionTitleOf(view, session) : shortId(req?.agent?.id)
-      const lines = [`🛡️ Разрешение: ${req?.toolName ?? 'неизвестно'} · ${title}`]
-      if (req?.reason) lines.push(`Причина: ${req.reason}`)
+      const lines = [t('approval.title', { tool: req?.toolName ?? t('approval.unknown'), title })]
+      if (req?.reason) lines.push(t('approval.reason', { reason: req.reason }))
       return { lines, title }
     }
 
@@ -468,7 +501,7 @@ export async function apply(ctx, rawConfig = {}) {
     if (config.approvalMode === 'notify' || liveClient) {
       void (async () => {
         const { lines } = await questionText()
-        if (liveClient) lines.push('', 'Карточка открыта в браузере — ответь там.')
+        if (liveClient) lines.push('', t('approval.browserOpen'))
         for (const chatId of state.chats()) await bot.sendMessage(chatId, lines.join('\n'))
       })().catch((error) => logger.warn('approval mirror failed', { error: String(error?.message ?? error) }))
       return next()
@@ -496,14 +529,14 @@ export async function apply(ctx, rawConfig = {}) {
 
       router.pendingApprovals.set(nonce, {
         decide: (allowed, chatId, messageId) => {
-          settle(allowed ? 'allowed-once' : 'rejected', allowed ? '✅ Разрешено' : '⛔ Отклонено')
+          settle(allowed ? 'allowed-once' : 'rejected', allowed ? t('approval.allowed') : t('approval.rejected'))
           if (messageId) void bot.clearKeyboard(chatId, messageId)
         },
       })
 
       void (async () => {
         const { lines } = await questionText()
-        lines.push('', `Ответь в течение ${config.approvalTimeoutSec} с, иначе карточка уйдёт в браузер.`)
+        lines.push('', t('approval.deadline', { seconds: config.approvalTimeoutSec }))
         for (const chatId of state.chats()) {
           await bot.sendMessage(chatId, lines.join('\n'), { keyboard: router.approvalKeyboard(nonce) })
         }
@@ -529,7 +562,7 @@ export async function apply(ctx, rawConfig = {}) {
         return
       }
       logger.info('telegram bot listening', { username: me.username })
-      await bot.setCommands(COMMANDS.map(([command, description]) => ({ command, description })))
+      await bot.setCommands(commandsFor(t).map(([command, description]) => ({ command, description })))
 
       let offset
       while (!controller.signal.aborted) {

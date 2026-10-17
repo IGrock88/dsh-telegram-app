@@ -329,19 +329,21 @@ test('the page view renders both fields, their state, and the save control', () 
     form: undefined,
   })
   const form = {
-    state: { status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 7 },
+    state: { status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 7 },
     mutate: async () => true,
   }
   const { tree } = mount({ view: 'page', t: (key) => key, form })
 
   const inputs = findAll(tree, (node) => node.type === 'input')
-  assert.equal(inputs.length, 2, 'one input per configurable field')
+  assert.equal(inputs.length, 3, 'one input per configurable field')
   assert.deepEqual(inputs.map((node) => node.props.id), [
     'dsh-telegram-app-bot-token',
     'dsh-telegram-app-control-token',
+    'dsh-telegram-app-locale',
   ])
-  // The accepted values seed the drafts. A secret arrives stripped, so they are empty.
-  assert.deepEqual(inputs.map((node) => node.props.value), ['', ''])
+  // The accepted values seed the drafts. The two secrets arrive stripped, so they are empty;
+  // the language is not a secret and shows its stored value.
+  assert.deepEqual(inputs.map((node) => node.props.value), ['', '', 'ru'])
   assert.equal(inputs.every((node) => node.props.disabled === false), true)
 
   const button = findOne(tree, FIRST_BUTTON, 'the save button')
@@ -373,7 +375,7 @@ test('a stored secret is reported as configured even though its value is strippe
       ],
     }],
     form: {
-      getSnapshot: () => ({ status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 4 }),
+      getSnapshot: () => ({ status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 4 }),
       subscribe: () => () => {},
       mutate: async () => true,
     },
@@ -400,7 +402,7 @@ test('a secret the host reports as unset says so', () => {
       ],
     }],
     form: {
-      getSnapshot: () => ({ status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 4 }),
+      getSnapshot: () => ({ status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 4 }),
       subscribe: () => () => {},
       mutate: async () => true,
     },
@@ -434,7 +436,7 @@ test('the page falls back to the mirror when the Plugins page passes no form', a
   const { mount } = loadClientHalf({
     namespaces: [{ ns: 'include:telegram-app' }],
     form: {
-      getSnapshot: () => ({ status: 'ready', value: { botToken: 'token-a', controlToken: '' }, writable: true, revision: 4 }),
+      getSnapshot: () => ({ status: 'ready', value: { botToken: 'token-a', controlToken: '', locale: 'ru' }, writable: true, revision: 4 }),
       subscribe: () => () => {},
       mutate: async (ops, revision) => {
         mutationCalls.push({ ops, revision })
@@ -445,7 +447,7 @@ test('the page falls back to the mirror when the Plugins page passes no form', a
   const page = mount({ view: 'page', t: (key) => key, form: undefined })
 
   const inputs = findAll(page.tree, (node) => node.type === 'input')
-  assert.deepEqual(inputs.map((node) => node.props.value), ['token-a', ''])
+  assert.deepEqual(inputs.map((node) => node.props.value), ['token-a', '', 'ru'])
   findOne(page.tree, CONTROL_INPUT, 'the control token input').props.onChange({ target: { value: 'typed' } })
   await findOne(page.tree, FIRST_BUTTON, 'the save button').props.onClick()
   assert.deepEqual(mutationCalls[0], { ops: [{ op: 'set', path: ['controlToken'], value: 'typed' }], revision: 4 })
@@ -455,7 +457,7 @@ test('a save writes only the field the reader edited', async () => {
   const { mount } = loadClientHalf()
   const calls = []
   const form = {
-    state: { status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 3 },
+    state: { status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 3 },
     mutate: async (ops, revision) => {
       calls.push({ ops, revision })
       return true
@@ -480,7 +482,7 @@ test('editing both fields sends both ops in one write', async () => {
   const { mount } = loadClientHalf()
   const calls = []
   const form = {
-    state: { status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 5 },
+    state: { status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 5 },
     mutate: async (ops, revision) => {
       calls.push({ ops, revision })
       return true
@@ -502,7 +504,7 @@ test('editing both fields sends both ops in one write', async () => {
 test('a refused save keeps the drafts and says so', async () => {
   const { mount } = loadClientHalf()
   const form = {
-    state: { status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 1 },
+    state: { status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 1 },
     mutate: async () => false,
   }
 
@@ -517,7 +519,7 @@ test('a refused save keeps the drafts and says so', async () => {
 test('an accepted save clears the drafts and confirms', async () => {
   const { mount } = loadClientHalf()
   const form = {
-    state: { status: 'ready', value: { botToken: '', controlToken: '' }, writable: true, revision: 2 },
+    state: { status: 'ready', value: { botToken: '', controlToken: '', locale: 'ru' }, writable: true, revision: 2 },
     mutate: async () => true,
   }
 
