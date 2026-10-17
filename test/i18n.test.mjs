@@ -19,7 +19,8 @@ import path from 'node:path'
 import test from 'node:test'
 import { COMMANDS, commandsFor, createRouter } from '../lib/chat.mjs'
 import { relativeTime, runDuration } from '../lib/format.mjs'
-import { DICTIONARIES, LOCALES, createTranslator, dictionaryKeys, pluralEn, pluralRu, resolveLocale } from '../lib/i18n.mjs'
+import { DICTIONARIES, LOCALES, createLiveTranslator, createTranslator, dictionaryKeys, pluralEn, pluralRu, resolveLocale } from '../lib/i18n.mjs'
+import { buildConfigSchema } from '../lib/schema.mjs'
 import { CB, cbNotify, menuReplyKeyboard, menuReplyLabel } from '../lib/markup.mjs'
 import { renderChats, renderMenu, renderSession, renderSettings, renderWorkspaces } from '../lib/screens.mjs'
 import { createSessionApi } from '../lib/sessions.mjs'
@@ -363,4 +364,91 @@ test('no locale is configured at all', async () => {
   const env = world({})
   await env.router.handleMessage(message(CHAT, 'correct-horse'))
   assert.ok(env.bot.textsTo(CHAT).includes('✅ Чат привязан.'))
+})
+
+// ── Live config updates ─────────────────────────────────────────────────────
+
+test('a language saved in the settings form reaches the bot without a restart', async () => {
+  // This reproduces what the Harness actually does when the form saves a volatile field, using
+  // the real schema and the real reference protocol instead of a stand-in:
+  //
+  //   const volatileOnly = equalExceptVolatile(legacy.config, this.options.config, Config)
+  //   if (volatileOnly) this.fiber._config = this.options.config
+  //   updateVolatile(ref, source)          // ref[write](source.get())
+  //
+  // There is no remount, so the only way the new language can reach the bot is through the
+  // reference the plugin already holds. Before that was fixed, the setting saved, the host
+  // applied it, and the bot carried on in Russian — the report that produced this test.
+  const WRITE = Symbol.for('cosmokit.volatile.write')
+  const resolved = buildConfigSchema()['~standard'].validate({ botToken: 'token' }).value
+  const cell = resolved.locale
+  assert.equal(typeof cell?.get, 'function', 'the schema hands volatile fields over as references')
+  assert.equal(cell.get(), 'ru', 'the schema default, as the host would deliver it')
+
+  const root = tempDir()
+  const alpha = path.join(root, 'app')
+  fs.mkdirSync(alpha)
+  const state = new StateStore({ file: path.join(root, 'state.json'), logger: fakeLogger() })
+  state.load()
+  state.setControlToken('correct-horse')
+
+  // One translator, built over the live reference the way `index.js` builds it, shared by every
+  // message the way `index.js` shares it.
+  const t = createLiveTranslator(() => cell.get())
+  const bot = fakeBot()
+  const router = createRouter({
+    config: { cwd: alpha },
+    state,
+    bot,
+    sessions: createSessionApi({ get: () => undefined }, { logger: fakeLogger() }),
+    registry: fakeRegistry({ workspaces: [workspace('w-alpha', alpha, 'app')], archived: [] }),
+    logger: fakeLogger(),
+    t,
+  })
+
+  await router.handleMessage(message(CHAT, 'correct-horse'))
+  assert.ok(bot.textsTo(CHAT).includes('✅ Чат привязан.'), 'Russian before the change')
+
+  await router.handleMessage(message(CHAT, '/menu'))
+  assert.match(bot.lastTo(CHAT), /Куда идём\?/)
+
+  // The host writes the new value into the reference it already handed over.
+  cell[WRITE]('en')
+
+  await router.handleMessage(message(CHAT, '/menu'))
+  assert.match(bot.lastTo(CHAT), /Where to\?/, 'English after the change, with no restart')
+  assert.ok(!/[А-Яа-яЁё]/u.test(bot.lastTo(CHAT)), 'the whole screen switched, not one line')
+
+  // And back, so a change in either direction is covered rather than just the first one.
+  cell[WRITE]('ru')
+  await router.handleMessage(message(CHAT, '/menu'))
+  assert.match(bot.lastTo(CHAT), /Куда идём\?/)
+})
+
+test('a live translator reports the change once and survives a failing listener', () => {
+  const WRITE = Symbol.for('cosmokit.volatile.write')
+  const resolved = buildConfigSchema()['~standard'].validate({}).value
+  const cell = resolved.locale
+
+  const changes = []
+  const t = createLiveTranslator(() => cell.get(), {
+    onChange: (locale) => {
+      changes.push(locale)
+      // The listener re-publishes the bot's command hints over the network. A failure there must
+      // not stop the message that triggered it from being sent.
+      throw new Error('re-publishing may fail')
+    },
+  })
+
+  assert.equal(t.locale, 'ru', 'the property reports the current language')
+  assert.equal(t('menu.ask'), 'Куда идём?')
+  assert.deepEqual(changes, [], 'nothing is reported while the language stands still')
+
+  cell[WRITE]('en')
+  assert.equal(t.locale, 'en', 'the property follows the reference')
+  assert.equal(t('menu.ask'), 'Where to?', 'and the listener throwing did not break the lookup')
+  assert.deepEqual(changes, ['en'], 'reported exactly once')
+
+  assert.equal(t('cmd.help'), 'Help')
+  assert.deepEqual(changes, ['en'], 'and not again on every later message')
 })

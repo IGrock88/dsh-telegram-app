@@ -104,7 +104,7 @@ token is present.
 | --- | --- | --- | --- |
 | `botToken` | string, secret | `''` | Token from @BotFather. A blank field in the form leaves the stored value untouched. |
 | `controlToken` | string, secret | `''` | The secret you send the bot once, in the chat, to authorise it. Generated on first run when empty. |
-| `locale` | string | `ru` | The language the bot speaks in the chat: `ru` or `en`. See [Language](#language). |
+| `locale` | string | `ru` | The language the bot speaks in the chat: `ru` or `en`. Applies without a restart. See [Language](#language). |
 | `publicBaseUrl` | string | `''` | Public HTTPS origin for the Mini App. Empty keeps layer 2 off entirely. |
 | `appPath` | string | `/tg-app` | Path the Mini App owns on the Harness Web server. Read once, at mount. |
 | `apiBase` | string | `https://api.telegram.org` | Bot API origin, replaceable by a local reverse proxy. |
@@ -176,9 +176,15 @@ The bot speaks Russian (`ru`) or English (`en`). Set `locale` in the settings fo
 so `EN`, `en-GB` and `en_GB` all mean English, and anything unrecognised falls back to
 Russian rather than leaving the bot mute.
 
-The setting applies to **the whole deployment**, not per chat: one bot, one language. It takes
-effect on the next start, which is also when the bot re-publishes its command hints to
-Telegram.
+The setting applies to **the whole deployment**, not per chat: one bot, one language.
+
+**It takes effect on the next message — no restart.** `locale` is a `volatile` field, which
+means the Harness updates the reference it handed the plugin rather than remounting it, so the
+plugin reads the current value every time it renders something. The bot's own command hints are
+re-published to Telegram at that moment too, because Telegram caches them on its side.
+
+The token fields are the opposite: changing `botToken` or `controlToken` needs a restart, since
+the bot's connection is built from them once, at mount.
 
 What changes and what does not:
 

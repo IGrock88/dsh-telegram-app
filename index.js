@@ -21,7 +21,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { TelegramBot } from './lib/bot.mjs'
 import { commandsFor, createRouter } from './lib/chat.mjs'
-import { createTranslator, resolveLocale } from './lib/i18n.mjs'
+import { createLiveTranslator, resolveLocale } from './lib/i18n.mjs'
 import { shortId } from './lib/format.mjs'
 import { registerRoutes } from './lib/routes.mjs'
 import { buildConfigSchema } from './lib/schema.mjs'
@@ -379,14 +379,32 @@ export async function apply(ctx, rawConfig = {}) {
     },
   }
 
-  const router = createRouter({ config, state, bot, sessions, registry, logger })
-
   /**
-   * The chat language, for the strings this file owns: the approval cards and the bot's own
-   * command hints. Everything else is rendered by the router, which builds its own translator
-   * from the same config — one setting, one language, both halves.
+   * The chat language, for the strings this file owns and for everything the router renders.
+   *
+   * Built over the **raw** config, not the normalized snapshot: `locale` is a volatile field,
+   * so the host updates its reference in place when the settings form saves a new value. Reading
+   * through that reference is what makes a language change take effect on the next message
+   * instead of at the next restart.
    */
-  const t = createTranslator(config.locale)
+  const t = createLiveTranslator(() => stringSetting(rawConfig, 'locale'), {
+    onChange: (locale) => {
+      logger.info('chat language changed', { locale })
+      // Telegram caches the command hints on its side, so the old language would otherwise stay
+      // visible in the chat's menu button. Re-publishing is cheap and safe.
+      void publishCommands().catch((error) => {
+        logger.warn('command hints were not re-published', { error: String(error?.message ?? error) })
+      })
+    },
+  })
+
+  const router = createRouter({ config, state, bot, sessions, registry, logger, t })
+
+  /** Publish the bot's command hints in the current language. */
+  async function publishCommands() {
+    if (!bot.configured) return
+    await bot.setCommands(commandsFor(t).map(([command, description]) => ({ command, description })))
+  }
 
   /** Turn start times, for the idle notification's duration (§8). */
   const runStartedAt = new Map()
@@ -562,7 +580,7 @@ export async function apply(ctx, rawConfig = {}) {
         return
       }
       logger.info('telegram bot listening', { username: me.username })
-      await bot.setCommands(commandsFor(t).map(([command, description]) => ({ command, description })))
+      await publishCommands()
 
       let offset
       while (!controller.signal.aborted) {
